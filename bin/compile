@@ -3,24 +3,41 @@ set -e
 set -o pipefail
 set -x
 
-readonly BUILDDIR=$1
-readonly CACHEDIR=$2
+readonly BUILDDIR=$(cd "$1" && pwd)
+readonly CACHEDIR=$(cd "$2" && pwd)
 
+
+mkdir -p "$CACHEDIR"
+readonly REQUESTED_PYTHON_VERSION=$(cat "$BUILDDIR/runtime.txt" || echo python-2.7.10)
+
+if [[ $(< $CACHEDIR/cached-runtime.txt) != $REQUESTED_PYTHON_VERSION ]]; then
+	echo "Installing $REQUESTED_PYTHON_VERSION"
+	cd "$CACHEDIR"
+	find . -mindepth 1 -delete
+	mkdir tmp
+	cd tmp
+	if [[ $REQUESTED_PYTHON_VERSION == "python-2.7.10" ]]; then
+		curl -fLOSs 'http://python.org/ftp/python/2.7.10/Python-2.7.10.tgz'
+		echo "49089f1f6ab445dc8ace97beeb276095c4c8039b  Python-2.7.10.tgz" | sha1sum --check
+		mkdir "python-src"
+		tar -xzf 'Python-2.7.10.tgz' --strip-components=1 -C "python-src"
+		cd "python-src"
+		mkdir "$CACHEDIR/python"
+		./configure --prefix="$CACHEDIR/python" --with-ensure-pip=install --with-ssl
+		make -j$(nproc)
+		make install
+		echo python-2.7.10 > "$CACHEDIR/cached-runtime.txt"
+	else
+		echo "Unhandled runtime $REQUESTED_PYTHON_VERSION"
+		exit 1
+	fi
+	$CACHEDIR/python/bin/python -m ensurepip
+	cd "$CACHEDIR"
+	rm -r "$CACHEDIR/tmp"
+fi
+cp -r "$CACHEDIR/python" "$BUILDDIR/.python"
 cd "$BUILDDIR"
-rm -rf .python
-SOURCE_TARBALL='http://python.org/ftp/python/2.7.9/Python-2.7.9.tgz'
-rm -rf $2/*
-mkdir $2/Python-2.7.9-src
-mkdir $2/Python-2.7.9-installed
-curl -L "$SOURCE_TARBALL" | tar -xz --strip-components=1 -C $2/Python-2.7.9-src
-cd $2/Python-2.7.9-src
-./configure --prefix=$2/Python-2.7.9-installed
-make
-make install
-rm -rf $2/Python-2.7.9-src
-cd $1
-mv $2/Python-2.7.9-installed .python
-.python/bin/python -m ensurepip
+.python/bin/pip install --disable-pip-version-check -U pip
 .python/bin/pip install -r requirements.txt
 
 mkdir -p .profile.d

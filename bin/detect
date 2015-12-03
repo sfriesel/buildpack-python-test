@@ -1,2 +1,2 @@
 #!/bin/bash
-echo Python
+[[ -f "$BUILD_DIR/requirements.txt" ]] && echo Python
